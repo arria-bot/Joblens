@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 DB_PATH_ENV = "JOBLENS_DB"
+ALIAS_FILE_ENV = "JOBLENS_ALIAS_FILE"
 
 # --- LLM settings -----------------------------------------------------------
 # "deepseek-flash" is not a public DeepSeek API model name; "deepseek-chat" is.
@@ -35,7 +36,8 @@ _REPO_ROOT = _PACKAGE_DIR.parents[1]
 
 
 def _source_checkout() -> bool:
-    return (_REPO_ROOT / "pyproject.toml").is_file()
+    """True when this module is imported from a checkout rather than a wheel."""
+    return (_REPO_ROOT / "pyproject.toml").is_file() and (_REPO_ROOT / "src" / "joblens").is_dir()
 
 
 def default_db_path() -> Path:
@@ -58,3 +60,11 @@ def get_db_path() -> Path:
     if override:
         return Path(override).expanduser()
     return default_db_path()
+
+
+def get_alias_file() -> Path | None:
+    """Optional user-supplied alias table, merged over the bundled one."""
+    override = os.environ.get(ALIAS_FILE_ENV)
+    if not override:
+        return None
+    return Path(override).expanduser()

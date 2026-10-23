@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from joblens import __version__, config
 from joblens.db.repository import Repository
@@ -27,7 +29,7 @@ from joblens.services.jobs import JobService
 # --- presentation -----------------------------------------------------------
 
 
-def _job_to_dict(job: Job, include_description: bool = True) -> dict:
+def _job_to_dict(job: Job, include_description: bool = True) -> dict[str, Any]:
     data = asdict(job)
     if not include_description:
         data.pop("description", None)
@@ -76,7 +78,7 @@ def print_match(result: MatchResult) -> None:
 
 def print_skills(skills: list[UserSkill]) -> None:
     if not skills:
-        print("No skills stored yet. Add one with: joblens skills add \"Python\"")
+        print('No skills stored yet. Add one with: joblens skills add "Python"')
         return
     for skill in skills:
         line = f"- {skill.skill} ({skill.level})"
@@ -85,7 +87,7 @@ def print_skills(skills: list[UserSkill]) -> None:
         print(line)
 
 
-def _emit_json(payload) -> None:
+def _emit_json(payload: object) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
@@ -137,11 +139,18 @@ def cmd_add(args: argparse.Namespace) -> int:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    jobs = _build_service(args.db).list_jobs(limit=args.limit)
+    service = _build_service(args.db)
+    jobs = service.list_jobs(limit=args.limit, offset=args.offset)
     if args.json:
         _emit_json([_job_to_dict(job, include_description=False) for job in jobs])
-    else:
-        print_jobs(jobs)
+        return 0
+
+    print_jobs(jobs)
+    total = service.repo.count_jobs()
+    if total > len(jobs):
+        first = args.offset + 1
+        last = args.offset + len(jobs)
+        print(f"Showing {first}-{last} of {total}. Use --offset {last} to see more.")
     return 0
 
 
@@ -345,6 +354,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_parser = subparsers.add_parser("list", help="list stored jobs")
     list_parser.add_argument("--limit", type=int, default=100)
+    list_parser.add_argument("--offset", type=int, default=0)
     list_parser.add_argument("--json", action="store_true")
     list_parser.set_defaults(func=cmd_list)
 
@@ -405,7 +415,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     try:
-        return args.func(args)
+        handler: Callable[[argparse.Namespace], int] = args.func
+        return handler(args)
     except JobLensError as exc:
         print(f"Error: {exc}")
         return 1

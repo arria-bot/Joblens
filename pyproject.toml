@@ -4,26 +4,69 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "joblens"
-version = "0.2.0"
+version = "0.3.0"
 description = "Compare a job posting's required skills against your own."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "JobLens contributors" }]
+keywords = ["jobs", "skills", "resume", "sqlite", "cli"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Environment :: Console",
+    "Topic :: Office/Business",
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = ["openai>=1.0,<3"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "mypy>=1.11",
+    "ruff>=0.6",
+]
 
 [project.scripts]
 joblens = "joblens.cli:main"
 
+[project.urls]
+Source = "https://github.com/arria-bot/Joblens"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"joblens.data" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+
+[tool.coverage.run]
+source = ["joblens"]
+branch = true
+omit = ["*/__main__.py"]
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+warn_unused_configs = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["openai.*"]
+ignore_missing_imports = true
 
 [tool.ruff]
 line-length = 100

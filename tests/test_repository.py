@@ -11,7 +11,11 @@ from joblens.models import Requirement
 
 def test_add_job_with_requirements(repo):
     job, reused = repo.add_job_with_requirements(
-        "Acme", "Backend Dev", "$90k", "saved", "We need Python.",
+        "Acme",
+        "Backend Dev",
+        "$90k",
+        "saved",
+        "We need Python.",
         [Requirement("Python", "required"), Requirement("SQL", "preferred")],
     )
 
@@ -135,3 +139,29 @@ def test_two_repositories_share_the_same_file(db_path):
     job = first.add_job("Acme", "Dev", "", "saved", "desc")
     second = Repository(db_path)
     assert second.require_job(job.id).company == "Acme"
+
+
+def _seed_jobs(repo, count: int) -> list[int]:
+    ids = []
+    for index in range(count):
+        ids.append(repo.add_job(f"C{index}", "Dev", "", "saved", f"description {index}").id)
+    return ids
+
+
+def test_list_jobs_paginates(repo):
+    _seed_jobs(repo, 3)
+
+    assert [job.id for job in repo.list_jobs(limit=2)] == [1, 2]
+    assert [job.id for job in repo.list_jobs(limit=2, offset=1)] == [2, 3]
+    assert [job.id for job in repo.list_jobs(limit=2, offset=2)] == [3]
+
+
+def test_list_jobs_offset_past_the_end_is_empty(repo):
+    _seed_jobs(repo, 2)
+    assert repo.list_jobs(offset=10) == []
+    assert repo.count_jobs() == 2
+
+
+def test_list_jobs_ignores_negative_offset(repo):
+    _seed_jobs(repo, 2)
+    assert [job.id for job in repo.list_jobs(limit=5, offset=-3)] == [1, 2]

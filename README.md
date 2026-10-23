@@ -115,8 +115,8 @@ Missing skills:
 ### Inspect and re-analyse
 
 ```bash
-joblens list                 # all stored jobs
-joblens list --limit 5 --json
+joblens list                 # all stored jobs (newest pages via --offset)
+joblens list --limit 5 --offset 5 --json
 joblens show 1               # details + extracted skills
 joblens analyze 1 --force    # re-run extraction, replacing the old skills
 ```
@@ -153,9 +153,23 @@ it from.
 | `JOBLENS_TIMEOUT` | `30` | Per-request timeout, seconds |
 | `JOBLENS_MAX_RETRIES` | `3` | Attempts on 429/5xx |
 | `JOBLENS_FUZZY_THRESHOLD` | `0.86` | Similarity needed for a fuzzy match |
+| `JOBLENS_ALIAS_FILE` | *(none)* | Extra skill aliases, merged over the bundled table |
 
 Schema changes are applied on start-up through versioned migrations
 (`PRAGMA user_version`), so older databases keep working.
+
+### Teaching it your own skill aliases
+
+The bundled equivalences live in `src/joblens/data/skill_aliases.json`. To add
+your own without touching the package, point `JOBLENS_ALIAS_FILE` at a JSON file
+shaped like `{"canonical": ["spelling", "another spelling"]}`:
+
+```json
+{ "kubernetes": ["k8s", "kube"] }
+```
+
+Groups are merged, so you can extend an existing canonical name instead of
+replacing it.
 
 ## Project layout
 
@@ -166,17 +180,21 @@ src/joblens/
 ├── models.py           # Job, Requirement, UserSkill, SkillMatch, MatchResult
 ├── prompts.py          # input helpers (whole numbers, statuses, multi-line)
 ├── errors.py           # JobLensError / ValidationError / NotFoundError / AnalysisError
+├── data/
+│   └── skill_aliases.json  # bundled alias table (user file merges on top)
 ├── db/
 │   ├── connection.py   # connection factory: FK, WAL, busy_timeout, Row
 │   ├── migrations.py   # versioned, rebuild-style migrations
 │   └── repository.py   # the only place with SQL; returns typed models
 └── services/
+    ├── aliases.py      # normalisation + alias table loading
     ├── analyzer.py     # LLM extraction: JSON mode, retries, validation
     ├── matching.py     # exact → alias → token → fuzzy matching
     └── jobs.py         # use cases: add (analyse first), re-analyse, match
 
 project.py              # thin launcher: python project.py still works
 tests/                  # pytest suite, fully offline
+.github/workflows/      # CI: lint, format, types, tests on 3.10–3.13
 ```
 
 Dependencies point one way only: `cli → services → db`. The database layer knows
@@ -185,14 +203,20 @@ nothing about the LLM, and nothing below the CLI prints.
 ## Development
 
 ```bash
-pytest                 # 89 tests, no API key or network required
+pip install -e ".[dev]"
+
+pytest                 # ~100 tests, no API key or network required
+pytest --cov=joblens   # coverage (CI enforces 85%)
 ruff check .           # lint
 ruff format .          # formatting
+mypy                   # strict type checking of src/
+pre-commit install     # optional: run the same checks before each commit
 ```
 
 The test suite injects a fake LLM client, so it runs offline and never spends
-API credit.
+API credit. CI runs lint, format check, `mypy` and the test suite on Python
+3.10–3.13 (see `.github/workflows/ci.yml`).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

@@ -74,9 +74,7 @@ class MatchResult:
         """Weighted coverage in percent (required counts double)."""
         from joblens.config import IMPORTANCE_WEIGHTS
 
-        total = sum(
-            IMPORTANCE_WEIGHTS.get(m.importance, 1.0) for m in self.matched + self.missing
-        )
+        total = sum(IMPORTANCE_WEIGHTS.get(m.importance, 1.0) for m in self.matched + self.missing)
         if total == 0:
             return 0.0
         covered = sum(IMPORTANCE_WEIGHTS.get(m.importance, 1.0) for m in self.matched)

@@ -19,9 +19,9 @@ class StubAnalyzer:
     """Stand-in for :class:`joblens.services.analyzer.SkillAnalyzer`."""
 
     def __init__(self, requirements=None, error=None):
-        self.requirements = list(requirements) if requirements is not None else [
-            Requirement("SQL", "required")
-        ]
+        self.requirements = (
+            list(requirements) if requirements is not None else [Requirement("SQL", "required")]
+        )
         self.error = error
         self.calls: list[str] = []
 
@@ -41,9 +41,7 @@ class FakeClient:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls: list[dict] = []
-        self.chat = types.SimpleNamespace(
-            completions=types.SimpleNamespace(create=self._create)
-        )
+        self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
         self.calls.append(kwargs)

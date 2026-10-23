@@ -95,13 +95,19 @@ def test_add_accepts_flags_and_description_file(db_path, tmp_path, monkeypatch, 
 
     code, out = run(
         [
-            "--db", str(db_path),
+            "--db",
+            str(db_path),
             "add",
-            "--company", "Acme",
-            "--title", "Backend Dev",
-            "--salary", "$90k",
-            "--status", "applied",
-            "--description-file", str(description),
+            "--company",
+            "Acme",
+            "--title",
+            "Backend Dev",
+            "--salary",
+            "$90k",
+            "--status",
+            "applied",
+            "--description-file",
+            str(description),
         ],
         capsys,
     )
@@ -118,13 +124,19 @@ def test_add_without_api_key_fails_cleanly(db_path, tmp_path, monkeypatch, capsy
 
     code, out = run(
         [
-            "--db", str(db_path),
+            "--db",
+            str(db_path),
             "add",
-            "--company", "Acme",
-            "--title", "Dev",
-            "--salary", "$90k",
-            "--status", "saved",
-            "--description-file", str(description),
+            "--company",
+            "Acme",
+            "--title",
+            "Dev",
+            "--salary",
+            "$90k",
+            "--status",
+            "saved",
+            "--description-file",
+            str(description),
         ],
         capsys,
     )
@@ -169,10 +181,15 @@ def test_match_json_contains_both_lists(db_path, capsys):
 def test_skills_add_list_and_remove(db_path, capsys):
     code, out = run(
         [
-            "--db", str(db_path),
-            "skills", "add", "Python",
-            "--level", "Advanced",
-            "--evidence", "CS50x",
+            "--db",
+            str(db_path),
+            "skills",
+            "add",
+            "Python",
+            "--level",
+            "Advanced",
+            "--evidence",
+            "CS50x",
         ],
         capsys,
     )
@@ -256,3 +273,29 @@ def test_prompt_status_reprompts_until_valid(monkeypatch, capsys):
 
     assert prompt_status() == "applied"
     assert "Please choose one of" in capsys.readouterr().out
+
+
+def test_list_paginates_and_hints_at_more(db_path, capsys):
+    repo = Repository(db_path)
+    repo.init()
+    for index in range(3):
+        repo.add_job(f"C{index}", "Dev", "", "saved", f"description {index}")
+
+    code, out = run(["--db", str(db_path), "list", "--limit", "1", "--offset", "1"], capsys)
+
+    assert code == 0
+    assert "2. C1 - Dev [saved]" in out
+    assert "Showing 2-2 of 3" in out
+    assert "--offset 2" in out
+
+
+def test_list_json_respects_offset(db_path, capsys):
+    repo = Repository(db_path)
+    repo.init()
+    for index in range(3):
+        repo.add_job(f"C{index}", "Dev", "", "saved", f"description {index}")
+
+    _, out = run(["--db", str(db_path), "list", "--json", "--offset", "2"], capsys)
+
+    payload = json.loads(out)
+    assert [item["company"] for item in payload] == ["C2"]

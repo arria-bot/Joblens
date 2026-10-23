@@ -1,6 +1,6 @@
 """JobLens: a CLI that compares a job posting's skills against yours."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from joblens.config import get_db_path
 

@@ -7,15 +7,19 @@ from :mod:`joblens.models`, and every write runs inside a transaction.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TypeAlias
 
 from joblens.config import ALLOWED_IMPORTANCE, ALLOWED_STATUSES
 from joblens.db.connection import get_conn, resolve_db_path
 from joblens.db.migrations import compute_description_hash, migrate
-from joblens.errors import NotFoundError, ValidationError
+from joblens.errors import JobLensError, NotFoundError, ValidationError
 from joblens.models import Job, Requirement, UserSkill
+
+#: Anything the repository can turn into requirement rows.
+RequirementInput: TypeAlias = "Requirement | Mapping[str, str] | tuple[str, str]"
 
 
 def validate_status(status: str) -> str:
@@ -49,7 +53,14 @@ def _row_to_user_skill(row: sqlite3.Row) -> UserSkill:
     return UserSkill(skill=row["skill"], level=row["level"], evidence=row["evidence"])
 
 
-def normalise_requirements(requirements: Iterable) -> list[Requirement]:
+def _last_row_id(cursor: sqlite3.Cursor) -> int:
+    """lastrowid is typed as int | None; an INSERT always produces one."""
+    if cursor.lastrowid is None:  # pragma: no cover - defensive
+        raise JobLensError("SQLite did not return an id for the inserted row.")
+    return int(cursor.lastrowid)
+
+
+def normalise_requirements(requirements: Iterable[RequirementInput]) -> list[Requirement]:
     """Validate, de-duplicate (case-insensitively) and order requirements."""
     normalised: dict[str, Requirement] = {}
     for item in requirements:
@@ -94,7 +105,7 @@ class Repository:
         salary: str,
         status: str,
         description: str,
-        requirements: Iterable,
+        requirements: Iterable[RequirementInput],
     ) -> tuple[Job, bool]:
         """Insert (or refresh) a job and its skills in a single transaction.
 
@@ -134,7 +145,7 @@ class Repository:
                     """,
                     (company, title, salary, status, description, digest),
                 )
-                job_id = int(cursor.lastrowid)
+                job_id = _last_row_id(cursor)
                 reused = False
             self._write_requirements(conn, job_id, prepared)
             row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -165,7 +176,7 @@ class Repository:
                 (company, title, salary, status, description, digest),
             )
             row = conn.execute(
-                "SELECT * FROM jobs WHERE id = ?", (cursor.lastrowid,)
+                "SELECT * FROM jobs WHERE id = ?", (_last_row_id(cursor),)
             ).fetchone()
         return _row_to_job(row)
 
@@ -180,15 +191,16 @@ class Repository:
             raise NotFoundError(f"Job with id {job_id} does not exist.")
         return job
 
-    def list_jobs(self, limit: int = 100) -> list[Job]:
+    def list_jobs(self, limit: int = 100, offset: int = 0) -> list[Job]:
+        """One page of jobs, oldest first."""
         with self._conn() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM jobs
                  ORDER BY id
-                 LIMIT ?
+                 LIMIT ? OFFSET ?
                 """,
-                (max(1, int(limit)),),
+                (max(1, int(limit)), max(0, int(offset))),
             ).fetchall()
         return [_row_to_job(row) for row in rows]
 
@@ -211,7 +223,7 @@ class Repository:
         )
         return len(rows)
 
-    def save_requirements(self, job_id: int, requirements: Iterable) -> int:
+    def save_requirements(self, job_id: int, requirements: Iterable[RequirementInput]) -> int:
         """Idempotently store skills for an existing job."""
         prepared = normalise_requirements(requirements)
         with self._conn() as conn:
@@ -219,20 +231,16 @@ class Repository:
             if not exists:
                 raise NotFoundError(f"Job with id {job_id} does not exist.")
             saved = self._write_requirements(conn, job_id, prepared)
-            conn.execute(
-                "UPDATE jobs SET analysis_status = 'done' WHERE id = ?", (job_id,)
-            )
+            conn.execute("UPDATE jobs SET analysis_status = 'done' WHERE id = ?", (job_id,))
         return saved
 
-    def replace_requirements(self, job_id: int, requirements: Iterable) -> int:
+    def replace_requirements(self, job_id: int, requirements: Iterable[RequirementInput]) -> int:
         """Drop existing skills for a job and write the new set (re-analysis)."""
         prepared = normalise_requirements(requirements)
         with self._conn() as conn:
             conn.execute("DELETE FROM requirements WHERE job_id = ?", (job_id,))
             saved = self._write_requirements(conn, job_id, prepared)
-            conn.execute(
-                "UPDATE jobs SET analysis_status = 'done' WHERE id = ?", (job_id,)
-            )
+            conn.execute("UPDATE jobs SET analysis_status = 'done' WHERE id = ?", (job_id,))
         return saved
 
     def get_requirements(self, job_id: int) -> list[Requirement]:
@@ -252,9 +260,7 @@ class Repository:
         if status not in ("pending", "done", "failed"):
             raise ValidationError(f"Invalid analysis status {status!r}")
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE jobs SET analysis_status = ? WHERE id = ?", (status, job_id)
-            )
+            conn.execute("UPDATE jobs SET analysis_status = ? WHERE id = ?", (status, job_id))
 
     # --- user skills -------------------------------------------------------
     def add_user_skill(self, skill: str, level: str = "unknown", evidence: str = "") -> UserSkill:

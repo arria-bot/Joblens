@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from typing import Any
 
 from joblens.config import ALLOWED_IMPORTANCE, ALLOWED_STATUSES
 from joblens.errors import JobLensError
@@ -68,10 +69,7 @@ def compute_description_hash(company: str, title: str, description: str) -> str:
 
 
 def _table_names(conn: sqlite3.Connection) -> set[str]:
-    return {
-        row[0]
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-    }
+    return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -82,7 +80,7 @@ def _expr(columns: set[str], name: str, default: str) -> str:
     return f"COALESCE({name}, {default})" if name in columns else default
 
 
-def _read_legacy_jobs(conn: sqlite3.Connection, tables: set[str]) -> list:
+def _read_legacy_jobs(conn: sqlite3.Connection, tables: set[str]) -> list[Any]:
     if "jobs" not in tables:
         return []
     cols = _columns(conn, "jobs")
@@ -99,7 +97,7 @@ def _read_legacy_jobs(conn: sqlite3.Connection, tables: set[str]) -> list:
     return conn.execute("SELECT " + ", ".join(fields) + " FROM jobs ORDER BY id").fetchall()
 
 
-def _read_legacy_requirements(conn: sqlite3.Connection, tables: set[str]) -> list:
+def _read_legacy_requirements(conn: sqlite3.Connection, tables: set[str]) -> list[Any]:
     if "requirements" not in tables:
         return []
     cols = _columns(conn, "requirements")
@@ -116,7 +114,7 @@ def _read_legacy_requirements(conn: sqlite3.Connection, tables: set[str]) -> lis
     return conn.execute(sql).fetchall()
 
 
-def _read_legacy_user_skills(conn: sqlite3.Connection, tables: set[str]) -> list:
+def _read_legacy_user_skills(conn: sqlite3.Connection, tables: set[str]) -> list[Any]:
     if "user_skills" not in tables:
         return []
     cols = _columns(conn, "user_skills")
@@ -147,7 +145,7 @@ def _migration_001_initial_schema(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS user_skills")
     conn.executescript(SCHEMA_V1)
 
-    requirements_by_old_job: dict[int, list] = {}
+    requirements_by_old_job: dict[int, list[tuple[Any, Any]]] = {}
     for job_id, skill, importance in legacy_requirements:
         if job_id is None or not (skill or "").strip():
             continue
@@ -223,7 +221,8 @@ MIGRATIONS = (_migration_001_initial_schema,)
 
 
 def current_version(conn: sqlite3.Connection) -> int:
-    return conn.execute("PRAGMA user_version").fetchone()[0]
+    row = conn.execute("PRAGMA user_version").fetchone()
+    return int(row[0])
 
 
 def migrate(conn: sqlite3.Connection) -> int:

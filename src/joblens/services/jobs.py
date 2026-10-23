@@ -48,8 +48,8 @@ class JobService:
         )
         return job, reused, requirements
 
-    def list_jobs(self, limit: int = 100) -> list[Job]:
-        return self.repo.list_jobs(limit=limit)
+    def list_jobs(self, limit: int = 100, offset: int = 0) -> list[Job]:
+        return self.repo.list_jobs(limit=limit, offset=offset)
 
     def get_job(self, job_id: int) -> Job:
         return self.repo.require_job(job_id)

@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 
 from joblens.db import migrations
-from joblens.db.connection import connect
+from joblens.db.connection import get_conn
 from joblens.db.migrations import compute_description_hash
 from joblens.db.repository import Repository
 from joblens.errors import JobLensError
@@ -65,8 +65,7 @@ def test_fresh_database_gets_tables_and_version(tmp_path):
 
     with sqlite3.connect(path) as conn:
         tables = {
-            row[0]
-            for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         }
         version = conn.execute("PRAGMA user_version").fetchone()[0]
 
@@ -77,7 +76,7 @@ def test_fresh_database_gets_tables_and_version(tmp_path):
 def test_init_is_idempotent(repo):
     repo.init()
     repo.init()
-    with connect(repo.db_path) as conn:
+    with get_conn(repo.db_path) as conn:
         assert migrations.current_version(conn) == len(migrations.MIGRATIONS)
 
 
@@ -100,9 +99,7 @@ def test_legacy_database_is_migrated_without_data_loss(legacy_db):
     assert {skill.skill for skill in repository.list_user_skills()} == {"Python", "SQL"}
 
     with sqlite3.connect(legacy_db) as conn:
-        assert [row[2] for row in conn.execute("PRAGMA foreign_key_list(requirements)")] == [
-            "jobs"
-        ]
+        assert [row[2] for row in conn.execute("PRAGMA foreign_key_list(requirements)")] == ["jobs"]
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -140,7 +137,7 @@ def test_migration_rejects_orphan_rows(tmp_path):
     Repository(path).init()
 
     # The orphan had no job, so nothing survived; the FK check stays clean.
-    with connect(path) as conn:
+    with get_conn(path) as conn:
         assert conn.execute("SELECT count(*) FROM requirements").fetchone()[0] == 0
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
 
@@ -167,7 +164,7 @@ def test_migration_failure_raises_joblens_error(monkeypatch):
 
 
 def test_foreign_keys_are_enabled_for_every_connection(repo):
-    with connect(repo.db_path) as conn:
+    with get_conn(repo.db_path) as conn:
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
@@ -180,7 +177,7 @@ def test_deleting_a_job_cascades_to_requirements(repo):
     job = repo.add_job("Acme", "Dev", "", "saved", "desc")
     repo.save_requirements(job.id, [("SQL", "required")])
 
-    with connect(repo.db_path) as conn:
+    with get_conn(repo.db_path) as conn:
         conn.execute("DELETE FROM jobs WHERE id = ?", (job.id,))
 
     assert repo.get_requirements(job.id) == []

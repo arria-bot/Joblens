@@ -1,0 +1,27 @@
+{
+  "api": [
+    "api",
+    "apis",
+    "rest api",
+    "restful api",
+    "api integration",
+    "rest api integration",
+    "web api",
+    "api design"
+  ],
+  ".net": [".net", "dotnet", ".net core", "dotnet core", "asp.net", "asp.net core"],
+  "c#": ["c#", "csharp", "c sharp"],
+  "c++": ["c++", "cpp"],
+  "javascript": ["javascript", "js", "ecmascript"],
+  "typescript": ["typescript", "ts"],
+  "postgresql": ["postgresql", "postgres", "psql"],
+  "sqlite": ["sqlite", "sqlite3"],
+  "node.js": ["node", "node.js", "nodejs"],
+  "react": ["react", "react.js", "reactjs"],
+  "ci/cd": ["ci/cd", "cicd", "ci cd", "continuous integration", "continuous delivery"],
+  "machine learning": ["machine learning", "ml"],
+  "html": ["html", "html5"],
+  "css": ["css", "css3"],
+  "pytest": ["pytest", "py.test"],
+  "rest": ["rest", "restful"]
+}

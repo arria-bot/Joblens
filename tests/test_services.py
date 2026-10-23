@@ -10,7 +10,10 @@ from joblens.models import Requirement
 
 def test_add_job_stores_job_and_skills(service, repo, stub_analyzer):
     job, reused, requirements = service.add_job(
-        company="Acme", title="Dev", salary="$90k", status="saved",
+        company="Acme",
+        title="Dev",
+        salary="$90k",
+        status="saved",
         description="We need SQL.",
     )
 
