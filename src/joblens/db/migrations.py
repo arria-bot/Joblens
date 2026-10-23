@@ -1,20 +1,22 @@
 """Versioned schema migrations.
 
-``CREATE TABLE IF NOT EXISTS`` cannot evolve an existing database: your
-``jobs.db`` already contains a ``requirements`` table without a foreign key, and
-no amount of re-running the old ``init_db`` would ever fix it.  Instead we use
-``PRAGMA user_version`` and an ordered list of Python migration functions.
+``CREATE TABLE IF NOT EXISTS`` can never evolve an existing database; the
+original ``jobs.db`` shipped a ``requirements`` table without a foreign key and
+no code path would ever have fixed it.  Instead: ``PRAGMA user_version`` plus an
+ordered list of migration callables.
 
-Migration 1 is written as a *rebuild*: it reads whatever legacy tables exist,
-drops them, creates the final schema, and copies the rows back.  The same code
-therefore handles a brand-new database and an old one with drifted DDL.
+Migration 1 is a *rebuild*: read whatever legacy tables exist, drop them, create
+the final schema, copy the rows back.  One code path therefore handles both a
+fresh database and a drifted one.
 """
+
+from __future__ import annotations
 
 import hashlib
 import sqlite3
 
-from config import ALLOWED_IMPORTANCE, ALLOWED_STATUSES
-from errors import JobLensError
+from joblens.config import ALLOWED_IMPORTANCE, ALLOWED_STATUSES
+from joblens.errors import JobLensError
 
 SCHEMA_V1 = """
 CREATE TABLE jobs (
@@ -51,6 +53,8 @@ CREATE TABLE user_skills (
 );
 """
 
+EMPTY_STRING = "''"
+
 
 def compute_description_hash(company: str, title: str, description: str) -> str:
     """Stable fingerprint of a posting, used to avoid storing/paying twice."""
@@ -60,28 +64,25 @@ def compute_description_hash(company: str, title: str, description: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-# --- legacy reading helpers -------------------------------------------------
+# --- legacy readers ---------------------------------------------------------
 
 
-def _table_names(conn: sqlite3.Connection) -> set:
-    rows = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-    return {row[0] for row in rows}
+def _table_names(conn: sqlite3.Connection) -> set[str]:
+    return {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
 
 
-def _columns(conn: sqlite3.Connection, table: str) -> set:
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
     return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
-def _select_expr(columns: set, name: str, default: str) -> str:
-    if name in columns:
-        return f"COALESCE({name}, {default})"
-    return default
+def _expr(columns: set[str], name: str, default: str) -> str:
+    return f"COALESCE({name}, {default})" if name in columns else default
 
 
-EMPTY_STRING = "''"
-
-
-def _read_legacy_jobs(conn: sqlite3.Connection, tables: set) -> list:
+def _read_legacy_jobs(conn: sqlite3.Connection, tables: set[str]) -> list:
     if "jobs" not in tables:
         return []
     cols = _columns(conn, "jobs")
@@ -89,17 +90,16 @@ def _read_legacy_jobs(conn: sqlite3.Connection, tables: set) -> list:
         return []
     fields = [
         "id",
-        _select_expr(cols, "company", EMPTY_STRING),
-        _select_expr(cols, "title", EMPTY_STRING),
-        _select_expr(cols, "salary", EMPTY_STRING),
-        _select_expr(cols, "status", "'saved'"),
-        _select_expr(cols, "description", EMPTY_STRING),
+        _expr(cols, "company", EMPTY_STRING),
+        _expr(cols, "title", EMPTY_STRING),
+        _expr(cols, "salary", EMPTY_STRING),
+        _expr(cols, "status", "'saved'"),
+        _expr(cols, "description", EMPTY_STRING),
     ]
-    sql = "SELECT " + ", ".join(fields) + " FROM jobs ORDER BY id"
-    return conn.execute(sql).fetchall()
+    return conn.execute("SELECT " + ", ".join(fields) + " FROM jobs ORDER BY id").fetchall()
 
 
-def _read_legacy_requirements(conn: sqlite3.Connection, tables: set) -> list:
+def _read_legacy_requirements(conn: sqlite3.Connection, tables: set[str]) -> list:
     if "requirements" not in tables:
         return []
     cols = _columns(conn, "requirements")
@@ -107,8 +107,8 @@ def _read_legacy_requirements(conn: sqlite3.Connection, tables: set) -> list:
         return []
     fields = [
         "job_id",
-        _select_expr(cols, "skill", EMPTY_STRING),
-        _select_expr(cols, "importance", "'required'"),
+        _expr(cols, "skill", EMPTY_STRING),
+        _expr(cols, "importance", "'required'"),
     ]
     sql = "SELECT " + ", ".join(fields) + " FROM requirements"
     if "id" in cols:
@@ -116,16 +116,16 @@ def _read_legacy_requirements(conn: sqlite3.Connection, tables: set) -> list:
     return conn.execute(sql).fetchall()
 
 
-def _read_legacy_user_skills(conn: sqlite3.Connection, tables: set) -> list:
+def _read_legacy_user_skills(conn: sqlite3.Connection, tables: set[str]) -> list:
     if "user_skills" not in tables:
         return []
     cols = _columns(conn, "user_skills")
     if "skill" not in cols:
         return []
     fields = [
-        _select_expr(cols, "skill", EMPTY_STRING),
-        _select_expr(cols, "level", "'unknown'"),
-        _select_expr(cols, "evidence", EMPTY_STRING),
+        _expr(cols, "skill", EMPTY_STRING),
+        _expr(cols, "level", "'unknown'"),
+        _expr(cols, "evidence", EMPTY_STRING),
     ]
     sql = "SELECT " + ", ".join(fields) + " FROM user_skills"
     if "id" in cols:
@@ -133,7 +133,7 @@ def _read_legacy_user_skills(conn: sqlite3.Connection, tables: set) -> list:
     return conn.execute(sql).fetchall()
 
 
-# --- migration 1 ------------------------------------------------------------
+# --- migrations -------------------------------------------------------------
 
 
 def _migration_001_initial_schema(conn: sqlite3.Connection) -> None:
@@ -142,34 +142,29 @@ def _migration_001_initial_schema(conn: sqlite3.Connection) -> None:
     legacy_requirements = _read_legacy_requirements(conn, tables)
     legacy_user_skills = _read_legacy_user_skills(conn, tables)
 
-    # Rebuild from scratch so old DDL (missing FK, missing NOT NULL, missing
-    # CHECK constraints) is replaced instead of silently kept.
     conn.execute("DROP TABLE IF EXISTS requirements")
     conn.execute("DROP TABLE IF EXISTS jobs")
     conn.execute("DROP TABLE IF EXISTS user_skills")
     conn.executescript(SCHEMA_V1)
 
-    requirements_by_old_job: dict = {}
+    requirements_by_old_job: dict[int, list] = {}
     for job_id, skill, importance in legacy_requirements:
         if job_id is None or not (skill or "").strip():
             continue
         requirements_by_old_job.setdefault(job_id, []).append((skill, importance))
 
-    old_to_new: dict = {}
-    seen_hashes: dict = {}
+    old_to_new: dict[int, int] = {}
+    seen_hashes: dict[str, int] = {}
     for old_id, company, title, salary, status, description in legacy_jobs:
         description = description or ""
         digest = compute_description_hash(company, title, description)
         if digest in seen_hashes:
-            # Two postings with identical text: keep one job, remap the
-            # requirements of the duplicate onto it.
             old_to_new[old_id] = seen_hashes[digest]
             continue
         status = (status or "saved").strip().lower()
         if status not in ALLOWED_STATUSES:
             status = "saved"
-        has_requirements = bool(requirements_by_old_job.get(old_id))
-        analysis_status = "done" if has_requirements else "pending"
+        analysis_status = "done" if requirements_by_old_job.get(old_id) else "pending"
         conn.execute(
             """
             INSERT INTO jobs
@@ -224,9 +219,7 @@ def _migration_001_initial_schema(conn: sqlite3.Connection) -> None:
         )
 
 
-MIGRATIONS = (
-    _migration_001_initial_schema,
-)
+MIGRATIONS = (_migration_001_initial_schema,)
 
 
 def current_version(conn: sqlite3.Connection) -> int:

@@ -1,2 +1,3 @@
+# Convenience file; the authoritative list is in pyproject.toml.
 openai>=1.0,<3
 pytest>=8

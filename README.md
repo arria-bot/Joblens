@@ -1,104 +1,198 @@
-    # Joblens
-    #### Video Demo:  https://youtu.be/rdMpn5FCKic
-    #### Description:
-    JobLens is a Python command-line tool that helps job seekers analyze how well their skills match a given job description. It extracts technical skill requirements from job postings using the DeepSeek API, stores them in a local SQLite database, and compares them against your personal skill set to identify matched and missing skills.
+# JobLens
 
-    The project was built as the final project for CS50P: Introduction to Programming with Python (Harvard University). It demonstrates core Python concepts including file I/O, database interaction, API calls, JSON parsing, exception handling, and unit testing.
+JobLens is a command-line tool that answers one question: **how well does my
+skill set match this job posting?**
 
+Paste a job description, and JobLens asks an LLM (DeepSeek by default) to extract
+the technical skills it requires, stores them in a local SQLite database, and
+compares them against the skills you have recorded — reporting what matches, what
+is missing, and a weighted coverage score.
 
-    #### Features:
-    Create job entries — paste a job description directly into the terminal.
+Video demo: https://youtu.be/rdMpn5FCKic
 
-    Automatic skill extraction — uses the DeepSeek API to parse the job description and return a structured list of required and preferred skills.
+Originally built as the final project for **CS50P: Introduction to Programming
+with Python**, since restructured into a small layered application.
 
-    Skill matching — compares job requirements against your personal skills, ignoring case.
+## Features
 
-    View jobs — list all stored jobs or view a single job's details.
+- **Add a job** — paste a description in the terminal or read it from a file.
+- **Automatic skill extraction** — one structured call to an OpenAI-compatible
+  API, with JSON output mode, retries and a prompt-size cap.
+- **Skill matching** — exact names, known aliases (`JS` ↔ `JavaScript`), token
+  containment (`APIs` ⊂ `REST API / API integration`) and a fuzzy fallback.
+- **Weighted score** — `required` counts double; the result is a 0–100 coverage
+  percentage rather than a yes/no.
+- **Your skills are editable** — add, list and remove them from the CLI.
+- **Persistent storage** — a single SQLite file, migrated automatically.
+- **Scriptable** — subcommands plus `--json` output; interactive menu if you
+  prefer typing numbers.
 
-    Persistent storage — all data is stored in a local SQLite database (jobs.db).
+## Quick start
 
+```bash
+git clone https://github.com/arria-bot/Joblens.git
+cd Joblens
 
-    #### Tech Stack:
-    Python 3.13
+python -m venv .venv
+source .venv/bin/activate        # macOS/Linux
+# .venv\Scripts\activate         # Windows
 
-    SQLite — lightweight local database
+pip install -e ".[dev]"          # or: pip install -r requirements.txt
+```
 
-    DeepSeek API — LLM for extracting skills from unstructured text
+Set your API key (get one from DeepSeek):
 
-    pytest — unit testing framework
+```bash
+export DEEPSEEK_API_KEY="your_api_key_here"
+```
 
+Windows PowerShell: `$env:DEEPSEEK_API_KEY="your_api_key_here"`
 
-    #### Project Structure:
-    cs50p_project
-    project.py       # Main CLI entry point
-    database.py      # SQLite operations (create, read, update)
-    analyzer.py      # DeepSeek API integration
-    skills.py        # Skill matching logic
-    config.py        # Paths, model and limits (single source of truth)
-    migrations.py    # Versioned schema migrations (PRAGMA user_version)
-    errors.py        # Domain exceptions
-    utils.py         # CLI input helpers
-    test_project.py  # Unit tests
-    requirements.txt # Dependencies
-    README.md
+Then run:
 
+```bash
+python project.py                # interactive menu (works without installing)
+joblens --help                   # installed entry point (pip install -e .)
+python -m joblens --help         # same, once installed (or with PYTHONPATH=src)
+```
 
-    #### Installation:
-    1. Clone the repository (or download the source):
-    bash:
-    git clone https://github.com/username/joblens.git
-    cd joblens
+## Usage
 
-    2. Create a virtual environment(recommended):
-    bash:
-    python -m venv .venv
-    source .venv/bin/activate   # macOS/Linux
-    # .venv\Scripts\activate    # Windows
+### Record your own skills first
 
-    3. Install dependencies:
-    bash:
-    pip install -r requirements.txt
+Matching needs something to compare against:
 
-    4. Set up your DeepSeek API key:
-    Get an API key from DeepSeek, and set it as an environment variable:
-    bash:
-    export DEEPSEEK_API_KEY="your_api_key_here"
+```bash
+joblens skills add "Python" --level Intermediate --evidence "CS50x, JobLens"
+joblens skills add "SQL" --level Intermediate --evidence "CS50x"
+joblens skills add "REST API / API integration" --level Beginner --evidence "Crypto Buddy"
+joblens skills list
+joblens skills remove "Rust"
+```
 
-    5. Optional settings (all have sensible defaults):
-    bash:
-    export JOBLENS_DB="path/to/jobs.db"      # default: jobs.db next to the code
-    export JOBLENS_MODEL="deepseek-chat"     # model used for extraction
-    export JOBLENS_MAX_JD_CHARS="8000"       # longer postings are truncated
+### Add a job
 
-    The database file is created next to the source code, not in the current
-    directory, so the program can be started from anywhere.
+```bash
+joblens add
+# Company: Acme
+# Title: Backend Developer
+# Salary: $90k
+# Status (saved/applied/interview/offer/rejected) [saved]: applied
+# Paste the job description.
+# Type END on a new line when finished:
+# ...
+# END
+# Job created! Job id is 1 (7 skills saved).
+```
 
+Or non-interactively:
 
-    #### Usage
-    Run the main program:
-    bash:
-    python project.py
-    You will see a menu:
-    ====== JobLens ======
-    1. Create a job
-    2. Match skills
-    3. View a job
-    4. View jobs
-    5. Exit
+```bash
+joblens add --company Acme --title "Backend Developer" --status applied \
+            --description-file jd.txt
+```
 
-    Select 1, then enter the company, title, salary and status. Paste the full job description, and type END on a new line when finished. The Program will call the DeepSeek API to extract skills and save them to the database.
+### Match it against your skills
 
-    Select 2, then enter the job ID, the program compares the job's requirements with your stored skills and prints like this:
-    Matched skills:
-    - Python (required)
-    - SQL (preferred)
+```bash
+joblens match 1
+```
 
-    Missing skills:
-    - C# (required)
-    - .NET (required)
+```text
+Matched skills (3/7, score 71.4%):
+- SQL (required)
+- APIs (preferred) -> your "REST API / API integration" [token]
+- Python (required)
+Missing skills:
+- .NET (required)
+- Angular (required)
+- C# (required)
+- TypeScript (required)
+```
 
-    Select 3 to view a single job by ID.
+`[...]` shows *why* a skill matched: `exact`, `alias`, `token` or `fuzzy`.
 
-    Select 4 to list all stored jobs.
+### Inspect and re-analyse
 
+```bash
+joblens list                 # all stored jobs
+joblens list --limit 5 --json
+joblens show 1               # details + extracted skills
+joblens analyze 1 --force    # re-run extraction, replacing the old skills
+```
 
+### Interactive mode
+
+Running with no arguments opens the original menu:
+
+```text
+====== Joblens ======
+1. Create a job
+2. Match skills
+3. View a job
+4. View jobs
+5. Add a skill
+6. List my skills
+7. Remove a skill
+8. Exit
+```
+
+## Data and configuration
+
+Everything lives in one SQLite file. By default that is `jobs.db` in the project
+root; the program therefore behaves the same no matter which directory you start
+it from.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DEEPSEEK_API_KEY` | *(required)* | API key for skill extraction |
+| `JOBLENS_DB` | `jobs.db` | Database file location |
+| `JOBLENS_MODEL` | `deepseek-chat` | Model used for extraction |
+| `JOBLENS_API_BASE_URL` | `https://api.deepseek.com` | OpenAI-compatible endpoint |
+| `JOBLENS_MAX_JD_CHARS` | `8000` | Longer descriptions are truncated |
+| `JOBLENS_TIMEOUT` | `30` | Per-request timeout, seconds |
+| `JOBLENS_MAX_RETRIES` | `3` | Attempts on 429/5xx |
+| `JOBLENS_FUZZY_THRESHOLD` | `0.86` | Similarity needed for a fuzzy match |
+
+Schema changes are applied on start-up through versioned migrations
+(`PRAGMA user_version`), so older databases keep working.
+
+## Project layout
+
+```text
+src/joblens/
+├── cli.py              # argparse subcommands + interactive menu; all printing
+├── config.py           # paths, limits, allowed values
+├── models.py           # Job, Requirement, UserSkill, SkillMatch, MatchResult
+├── prompts.py          # input helpers (whole numbers, statuses, multi-line)
+├── errors.py           # JobLensError / ValidationError / NotFoundError / AnalysisError
+├── db/
+│   ├── connection.py   # connection factory: FK, WAL, busy_timeout, Row
+│   ├── migrations.py   # versioned, rebuild-style migrations
+│   └── repository.py   # the only place with SQL; returns typed models
+└── services/
+    ├── analyzer.py     # LLM extraction: JSON mode, retries, validation
+    ├── matching.py     # exact → alias → token → fuzzy matching
+    └── jobs.py         # use cases: add (analyse first), re-analyse, match
+
+project.py              # thin launcher: python project.py still works
+tests/                  # pytest suite, fully offline
+```
+
+Dependencies point one way only: `cli → services → db`. The database layer knows
+nothing about the LLM, and nothing below the CLI prints.
+
+## Development
+
+```bash
+pytest                 # 89 tests, no API key or network required
+ruff check .           # lint
+ruff format .          # formatting
+```
+
+The test suite injects a fake LLM client, so it runs offline and never spends
+API credit.
+
+## License
+
+MIT
