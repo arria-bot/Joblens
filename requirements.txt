@@ -1,2 +1,2 @@
-openai
-pytest
+openai>=1.0,<3
+pytest>=8

@@ -1,32 +1,24 @@
-from database import get_job
-import sqlite3
+"""Skill matching between a job's requirements and the user's skills."""
 
 
-def match_skills(job_id):
-    db = sqlite3.connect("jobs.db")
+from database import get_job, get_requirements, get_user_skills
+from utils import prompt_int
 
-    requirements = db.execute("""
-        SELECT skill, importance
-        FROM requirements
-        WHERE job_id = ?
-        """, (job_id,)).fetchall()
 
-    user_skills = db.execute("""
-        SELECT skill
-        FROM user_skills
-        """).fetchall()
+def match_skills(job_id: int, db_path: str | None = None):
+    """Return ``(matched, missing)`` lists of requirement rows.
 
-    db.close()
-
-    user_skill_names = [skill[0].lower() for skill in user_skills]
+    Matching is case-insensitive on whitespace-trimmed names.  Fuzzy/alias
+    matching (e.g. "APIs" vs "REST API") is a follow-up item, not part of P0.
+    """
+    requirements = get_requirements(job_id, db_path=db_path)
+    user_skills = get_user_skills(db_path=db_path)
+    user_skill_names = {row["skill"].strip().lower() for row in user_skills}
 
     matched = []
     missing = []
-
     for requirement in requirements:
-        skill = requirement[0]
-
-        if skill.lower() in user_skill_names:
+        if requirement["skill"].strip().lower() in user_skill_names:
             matched.append(requirement)
         else:
             missing.append(requirement)
@@ -34,29 +26,22 @@ def match_skills(job_id):
     return matched, missing
 
 
-
-
-
-
-def match_skills_workflow():
-    try:
-        job_id = int(input("What's the job id?").strip())
-    except ValueError:
-        print("Invalid input. Please enter valid number.")
+def match_skills_workflow(db_path: str | None = None) -> None:
+    job_id = prompt_int("What's the job id? ")
+    if job_id is None:
         return
 
-    job = get_job(job_id)
+    job = get_job(job_id, db_path=db_path)
     if job is None:
         print(f"Job with id {job_id} not found.")
         return
 
-    matched, missing = match_skills(job_id)
+    matched, missing = match_skills(job_id, db_path=db_path)
 
-    print("Matched skills: ")
+    print("Matched skills:")
     for skill in matched:
-        print(f"- {skill[0]} ({skill[1]})")
+        print(f"- {skill['skill']} ({skill['importance']})")
 
     print("Missing skills:")
     for skill in missing:
-        print(f"- {skill[0]} ({skill[1]})")
-
+        print(f"- {skill['skill']} ({skill['importance']})")

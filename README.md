@@ -34,8 +34,12 @@
     database.py      # SQLite operations (create, read, update)
     analyzer.py      # DeepSeek API integration
     skills.py        # Skill matching logic
+    config.py        # Paths, model and limits (single source of truth)
+    migrations.py    # Versioned schema migrations (PRAGMA user_version)
+    errors.py        # Domain exceptions
+    utils.py         # CLI input helpers
     test_project.py  # Unit tests
-    requirements.txt # Dependncies
+    requirements.txt # Dependencies
     README.md
 
 
@@ -59,6 +63,15 @@
     Get an API key from DeepSeek, and set it as an environment variable:
     bash:
     export DEEPSEEK_API_KEY="your_api_key_here"
+
+    5. Optional settings (all have sensible defaults):
+    bash:
+    export JOBLENS_DB="path/to/jobs.db"      # default: jobs.db next to the code
+    export JOBLENS_MODEL="deepseek-chat"     # model used for extraction
+    export JOBLENS_MAX_JD_CHARS="8000"       # longer postings are truncated
+
+    The database file is created next to the source code, not in the current
+    directory, so the program can be started from anywhere.
 
 
     #### Usage
